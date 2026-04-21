@@ -1,0 +1,1208 @@
+﻿Land Management System — Database Design Reference
+Land Management System
+Entity · Attribute · Relation Datasheet  +  MySQL DDL
+Database Design Reference  |  Version 2.0
+
+
+Document overview
+This document covers the complete database design for the Land Management System, including 15 entities, all attributes with data types and constraints, entity-relationship table, and full MySQL DDL including triggers, events, indexes, and views.
+
+
+Tag
+	Meaning
+	Entities
+	ADMIN
+	Admin-only entity
+	ADMIN
+	USER
+	Citizen-facing entity
+	USER
+	CORE
+	Core land system entity
+	LAND, TRANSACTION, SURVEY, etc.
+	NEW
+	Upgraded / new feature entity
+	BILLBOARD_PAYMENT, DISPUTE (escalation), DOCUMENT (expiry), AUDIT_LOG
+	
+
+________________
+
+
+Section 1 — Entities and attributes
+ADMIN  [ADMIN]
+System administrators who manage, approve, and operate all land-related records. Separated from USER for role-based access control.
+Attribute
+	Data type
+	Constraint
+	Description
+	admin_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique admin identifier
+	full_name
+	VARCHAR(100)
+	NOT NULL
+	Administrator full name
+	email
+	VARCHAR(150)
+	UNIQUE, NOT NULL
+	Login email address
+	password_hash
+	VARCHAR(255)
+	NOT NULL
+	Bcrypt hashed password
+	role
+	ENUM('superadmin','officer','surveyor')
+	NOT NULL
+	Admin role type
+	last_login
+	DATETIME
+	DEFAULT NULL
+	Timestamp of last login
+	is_active
+	TINYINT(1)
+	DEFAULT 1
+	Account active flag
+	created_at
+	DATETIME
+	DEFAULT CURRENT_TIMESTAMP
+	Account creation time
+	
+
+USER  [USER]
+Registered citizens who own land, raise disputes, request work orders, and pay taxes. Separate from ADMIN for clean permission boundaries.
+Attribute
+	Data type
+	Constraint
+	Description
+	user_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique user identifier
+	full_name
+	VARCHAR(100)
+	NOT NULL
+	Citizen full name
+	nid_number
+	VARCHAR(30)
+	UNIQUE, NOT NULL
+	National ID number
+	email
+	VARCHAR(150)
+	UNIQUE, DEFAULT NULL
+	Contact email
+	phone
+	VARCHAR(20)
+	NOT NULL
+	Contact phone number
+	address
+	TEXT
+	DEFAULT NULL
+	Residential address
+	is_verified
+	TINYINT(1)
+	DEFAULT 0
+	NID verification status
+	registered_at
+	DATETIME
+	DEFAULT CURRENT_TIMESTAMP
+	Registration timestamp
+	
+
+LAND  [CORE]
+Central entity. Every other entity references LAND. Stores parcel details, location, current ownership, estimated value (auto-computed from transactions).
+Attribute
+	Data type
+	Constraint
+	Description
+	land_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique parcel identifier
+	parcel_number
+	VARCHAR(50)
+	UNIQUE, NOT NULL
+	Official parcel/dag number
+	area_sqft
+	DECIMAL(12,2)
+	NOT NULL
+	Land area in square feet
+	land_type
+	ENUM('residential','agricultural','commercial','industrial','government')
+	NOT NULL
+	Classification of land use
+	mouza
+	VARCHAR(100)
+	NOT NULL
+	Mouza name
+	upazila
+	VARCHAR(100)
+	NOT NULL
+	Upazila name
+	district
+	VARCHAR(100)
+	NOT NULL
+	District name
+	current_status
+	ENUM('active','disputed','transferred','government')
+	DEFAULT 'active'
+	Current land status
+	current_estimated_value
+	DECIMAL(15,2)
+	DEFAULT 0.00
+	Auto-computed from transaction history
+	registered_owner_id
+	INT
+	FK → USER(user_id)
+	Current registered owner
+	created_at
+	DATETIME
+	DEFAULT CURRENT_TIMESTAMP
+	Record creation time
+	
+
+LAND_TRANSACTION  [CORE]
+Every ownership transfer. Includes a chain_valid flag verified by stored procedure to detect broken ownership chains.
+Attribute
+	Data type
+	Constraint
+	Description
+	transaction_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique transaction ID
+	land_id
+	INT
+	FK → LAND(land_id)
+	Parcel involved
+	from_user_id
+	INT
+	FK → USER(user_id)
+	Previous owner
+	to_user_id
+	INT
+	FK → USER(user_id)
+	New owner
+	transaction_type
+	ENUM('sale','inheritance','gift','court_order')
+	NOT NULL
+	Nature of transfer
+	transaction_date
+	DATE
+	NOT NULL
+	Date of transfer
+	amount
+	DECIMAL(15,2)
+	DEFAULT 0.00
+	Transaction value in BDT
+	deed_number
+	VARCHAR(100)
+	UNIQUE, NOT NULL
+	Official deed reference
+	chain_valid
+	TINYINT(1)
+	DEFAULT 1
+	Ownership chain integrity flag
+	approved_by
+	INT
+	FK → ADMIN(admin_id)
+	Approving admin
+	created_at
+	DATETIME
+	DEFAULT CURRENT_TIMESTAMP
+	Record timestamp
+	
+
+LAND_HISTORY  [CORE]
+Immutable event log per parcel — surveys, transactions, status changes, legal events.
+Attribute
+	Data type
+	Constraint
+	Description
+	history_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique history record
+	land_id
+	INT
+	FK → LAND(land_id)
+	Related parcel
+	event_type
+	ENUM('survey','transaction','dispute_filed','status_change','billboard_placed','work_order')
+	NOT NULL
+	Category of event
+	description
+	TEXT
+	NOT NULL
+	Detailed event notes
+	event_date
+	DATE
+	NOT NULL
+	Date of event
+	recorded_by_admin
+	INT
+	FK → ADMIN(admin_id)
+	Admin who logged the event
+	
+
+LAND_SURVEY  [CORE]
+Survey records with surveyor, method, and approval. Each survey captures land type at time of survey for historical accuracy.
+Attribute
+	Data type
+	Constraint
+	Description
+	survey_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique survey record
+	land_id
+	INT
+	FK → LAND(land_id)
+	Surveyed parcel
+	survey_date
+	DATE
+	NOT NULL
+	Date of survey
+	surveyor_admin_id
+	INT
+	FK → ADMIN(admin_id)
+	Admin who conducted survey
+	land_type_at_survey
+	VARCHAR(50)
+	NOT NULL
+	Land classification at time of survey
+	survey_method
+	ENUM('manual','digital','satellite')
+	NOT NULL
+	Survey methodology
+	notes
+	TEXT
+	DEFAULT NULL
+	Survey remarks
+	approved_by
+	INT
+	FK → ADMIN(admin_id)
+	Admin who approved survey
+	
+
+INFRASTRUCTURE  [CORE]
+Physical assets on a land parcel — buildings, roads, drainage, bridges.
+Attribute
+	Data type
+	Constraint
+	Description
+	asset_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique asset ID
+	land_id
+	INT
+	FK → LAND(land_id)
+	Associated parcel
+	asset_name
+	VARCHAR(150)
+	NOT NULL
+	Name of the asset
+	asset_type
+	ENUM('building','road','drainage','bridge','utility')
+	NOT NULL
+	Category of infrastructure
+	construction_date
+	DATE
+	DEFAULT NULL
+	Date of construction
+	condition
+	ENUM('excellent','good','fair','poor','critical')
+	DEFAULT 'good'
+	Current physical condition
+	owner_entity
+	VARCHAR(100)
+	DEFAULT NULL
+	Owning government body
+	
+
+MAINTENANCE  [CORE]
+Maintenance records for infrastructure assets.
+Attribute
+	Data type
+	Constraint
+	Description
+	maintenance_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique maintenance record
+	asset_id
+	INT
+	FK → INFRASTRUCTURE(asset_id)
+	Asset being maintained
+	maintenance_date
+	DATE
+	NOT NULL
+	Date of maintenance
+	maintenance_type
+	ENUM('routine','emergency','upgrade','demolition')
+	NOT NULL
+	Type of work
+	cost
+	DECIMAL(12,2)
+	DEFAULT 0.00
+	Total cost in BDT
+	assigned_admin_id
+	INT
+	FK → ADMIN(admin_id)
+	Responsible admin
+	notes
+	TEXT
+	DEFAULT NULL
+	Maintenance notes
+	next_scheduled_date
+	DATE
+	DEFAULT NULL
+	Next maintenance due date
+	
+
+WORK_ORDER  [CORE]
+Government work orders for land-related activities. Users request; admins are assigned.
+Attribute
+	Data type
+	Constraint
+	Description
+	work_order_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique work order ID
+	land_id
+	INT
+	FK → LAND(land_id)
+	Target parcel
+	work_type
+	ENUM('road_construction','survey','demolition','utility_install','inspection')
+	NOT NULL
+	Nature of work
+	requested_by_user
+	INT
+	FK → USER(user_id)
+	Citizen who requested
+	assigned_admin
+	INT
+	FK → ADMIN(admin_id)
+	Admin responsible
+	status
+	ENUM('pending','in_progress','completed','cancelled')
+	DEFAULT 'pending'
+	Work order status
+	start_date
+	DATE
+	DEFAULT NULL
+	Planned start date
+	end_date
+	DATE
+	DEFAULT NULL
+	Planned end date
+	notes
+	TEXT
+	DEFAULT NULL
+	Additional notes
+	
+
+BILLBOARD  [CORE]
+Billboard licenses on land parcels. Linked to BILLBOARD_PAYMENT for revenue tracking.
+Attribute
+	Data type
+	Constraint
+	Description
+	billboard_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique billboard ID
+	land_id
+	INT
+	FK → LAND(land_id)
+	Land parcel hosting billboard
+	owner_user_id
+	INT
+	FK → USER(user_id)
+	License holder
+	license_number
+	VARCHAR(80)
+	UNIQUE, NOT NULL
+	Official license reference
+	size_sqft
+	DECIMAL(8,2)
+	NOT NULL
+	Billboard size in sq ft
+	installation_date
+	DATE
+	NOT NULL
+	Date installed
+	expiry_date
+	DATE
+	NOT NULL
+	License expiry date
+	annual_fee
+	DECIMAL(10,2)
+	NOT NULL
+	Annual license fee in BDT
+	status
+	ENUM('active','expired','suspended','removed')
+	DEFAULT 'active'
+	Current license status
+	
+
+BILLBOARD_PAYMENT  [NEW]
+NEW — Tracks installment payments per billboard license. Enables revenue reporting and delinquency detection.
+Attribute
+	Data type
+	Constraint
+	Description
+	payment_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique payment record
+	billboard_id
+	INT
+	FK → BILLBOARD(billboard_id)
+	Related billboard
+	payment_date
+	DATE
+	NOT NULL
+	Date payment received
+	amount_paid
+	DECIMAL(10,2)
+	NOT NULL
+	Amount paid in BDT
+	payment_method
+	ENUM('cash','bank_transfer','online')
+	NOT NULL
+	Payment channel
+	status
+	ENUM('paid','pending','overdue')
+	DEFAULT 'pending'
+	Payment status
+	received_by_admin
+	INT
+	FK → ADMIN(admin_id)
+	Admin who received payment
+	
+
+TAX  [CORE]
+Land tax per parcel per financial year. Value derived from current_estimated_value in LAND.
+Attribute
+	Data type
+	Constraint
+	Description
+	tax_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique tax record
+	land_id
+	INT
+	FK → LAND(land_id)
+	Taxed parcel
+	owner_user_id
+	INT
+	FK → USER(user_id)
+	Taxpayer
+	financial_year
+	VARCHAR(10)
+	NOT NULL
+	e.g. 2024-2025
+	assessed_value
+	DECIMAL(15,2)
+	NOT NULL
+	Base value for tax calculation
+	tax_rate
+	DECIMAL(5,4)
+	NOT NULL
+	Applicable tax rate (e.g. 0.0150)
+	tax_amount
+	DECIMAL(12,2)
+	NOT NULL
+	Computed tax (assessed_value × tax_rate)
+	paid_amount
+	DECIMAL(12,2)
+	DEFAULT 0.00
+	Amount paid so far
+	due_date
+	DATE
+	NOT NULL
+	Payment deadline
+	status
+	ENUM('unpaid','partial','paid','overdue')
+	DEFAULT 'unpaid'
+	Payment status
+	calculated_by
+	INT
+	FK → ADMIN(admin_id)
+	Admin who generated tax
+	
+
+DISPUTE  [NEW]
+NEW — Includes escalation_level (1–3) auto-incremented by trigger if no status change within 30 days.
+Attribute
+	Data type
+	Constraint
+	Description
+	dispute_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique dispute ID
+	land_id
+	INT
+	FK → LAND(land_id)
+	Disputed parcel
+	raised_by_user
+	INT
+	FK → USER(user_id)
+	Citizen who filed
+	opponent_party
+	VARCHAR(150)
+	DEFAULT NULL
+	Name of opposing party
+	dispute_type
+	ENUM('ownership','boundary','mutation','encroachment','tax')
+	NOT NULL
+	Category of dispute
+	status
+	ENUM('filed','under_review','resolved','escalated','dismissed')
+	DEFAULT 'filed'
+	Current status
+	escalation_level
+	TINYINT
+	DEFAULT 1
+	Auto-escalates 1→2→3 after 30 days idle
+	filed_date
+	DATE
+	NOT NULL
+	Date dispute was filed
+	last_updated
+	DATETIME
+	DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+	Auto-updated on any change
+	resolution_date
+	DATE
+	DEFAULT NULL
+	Date resolved (if resolved)
+	resolution_notes
+	TEXT
+	DEFAULT NULL
+	Resolution summary
+	handled_by_admin
+	INT
+	FK → ADMIN(admin_id)
+	Assigned admin officer
+	
+
+DOCUMENT_REGISTRATION  [NEW]
+NEW — Documents carry expiry_date and doc_status for proactive lifecycle tracking of deeds, survey certs, tax clearances.
+Attribute
+	Data type
+	Constraint
+	Description
+	document_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique document ID
+	land_id
+	INT
+	FK → LAND(land_id)
+	Associated parcel
+	document_type
+	ENUM('deed','survey_certificate','tax_clearance','court_order','mutation_order','other')
+	NOT NULL
+	Document category
+	title
+	VARCHAR(200)
+	NOT NULL
+	Document title
+	file_reference
+	VARCHAR(255)
+	DEFAULT NULL
+	Physical/digital file path
+	registration_date
+	DATE
+	NOT NULL
+	Date registered
+	expiry_date
+	DATE
+	DEFAULT NULL
+	Expiry date if applicable
+	doc_status
+	ENUM('valid','expiring_soon','expired','revoked')
+	DEFAULT 'valid'
+	Lifecycle status
+	verified
+	TINYINT(1)
+	DEFAULT 0
+	Admin verification flag
+	registered_by_admin
+	INT
+	FK → ADMIN(admin_id)
+	Admin who registered document
+	
+
+AUDIT_LOG  [NEW]
+NEW — Immutable log of every INSERT/UPDATE/DELETE on critical tables. Makes the system legally defensible. Populated via MySQL triggers.
+Attribute
+	Data type
+	Constraint
+	Description
+	log_id
+	INT
+	PK, AUTO_INCREMENT
+	Unique log entry
+	table_name
+	VARCHAR(80)
+	NOT NULL
+	Affected table name
+	operation
+	ENUM('INSERT','UPDATE','DELETE')
+	NOT NULL
+	Operation type
+	record_id
+	INT
+	NOT NULL
+	PK of affected record
+	admin_id
+	INT
+	FK → ADMIN(admin_id), DEFAULT NULL
+	Admin who triggered change
+	user_id
+	INT
+	FK → USER(user_id), DEFAULT NULL
+	User who triggered change
+	old_value
+	TEXT
+	DEFAULT NULL
+	Previous value (JSON)
+	new_value
+	TEXT
+	DEFAULT NULL
+	New value (JSON)
+	performed_at
+	DATETIME
+	DEFAULT CURRENT_TIMESTAMP
+	Timestamp of operation
+	
+
+________________
+
+
+Section 2 — Entity relationships
+
+
+From entity
+	To entity
+	Cardinality
+	Relationship meaning
+	ADMIN
+	LAND_TRANSACTION
+	1 to Many
+	admin approves multiple transactions
+	ADMIN
+	LAND_HISTORY
+	1 to Many
+	admin records land history events
+	ADMIN
+	LAND_SURVEY
+	1 to Many
+	admin conducts and approves surveys
+	ADMIN
+	MAINTENANCE
+	1 to Many
+	admin assigned to maintenance tasks
+	ADMIN
+	WORK_ORDER
+	1 to Many
+	admin assigned to work orders
+	ADMIN
+	TAX
+	1 to Many
+	admin calculates tax records
+	ADMIN
+	DISPUTE
+	1 to Many
+	admin handles disputes
+	ADMIN
+	DOCUMENT_REGISTRATION
+	1 to Many
+	admin registers documents
+	ADMIN
+	BILLBOARD_PAYMENT
+	1 to Many
+	admin receives billboard payments
+	ADMIN
+	AUDIT_LOG
+	1 to Many
+	admin actions logged in audit
+	USER
+	LAND
+	1 to Many
+	user owns multiple parcels
+	USER
+	LAND_TRANSACTION
+	1 to Many
+	user buys or sells land
+	USER
+	WORK_ORDER
+	1 to Many
+	user requests work orders
+	USER
+	BILLBOARD
+	1 to Many
+	user holds billboard licenses
+	USER
+	TAX
+	1 to Many
+	user is liable for land tax
+	USER
+	DISPUTE
+	1 to Many
+	user raises disputes
+	USER
+	AUDIT_LOG
+	1 to Many
+	user actions logged in audit
+	LAND
+	LAND_TRANSACTION
+	1 to Many
+	land has multiple transactions
+	LAND
+	LAND_HISTORY
+	1 to Many
+	land has multiple history events
+	LAND
+	LAND_SURVEY
+	1 to Many
+	land undergoes multiple surveys
+	LAND
+	INFRASTRUCTURE
+	1 to Many
+	land contains multiple assets
+	LAND
+	WORK_ORDER
+	1 to Many
+	land has multiple work orders
+	LAND
+	BILLBOARD
+	1 to Many
+	land hosts multiple billboards
+	LAND
+	TAX
+	1 to Many
+	land has yearly tax records
+	LAND
+	DISPUTE
+	1 to Many
+	land can be subject to disputes
+	LAND
+	DOCUMENT_REGISTRATION
+	1 to Many
+	land has multiple registered documents
+	INFRASTRUCTURE
+	MAINTENANCE
+	1 to Many
+	asset has multiple maintenance records
+	BILLBOARD
+	BILLBOARD_PAYMENT
+	1 to Many
+	billboard has multiple payment records
+	
+
+________________
+
+
+Section 3 — MySQL DDL commands
+Copy and execute the following commands in sequence in your MySQL client. Tables must be created in the order shown to satisfy foreign key dependencies.
+
+
+— Database creation
+CREATE DATABASE IF NOT EXISTS land_management_db
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
+
+USE land_management_db;
+	
+
+— ADMIN table
+CREATE TABLE admin (
+    admin_id       INT AUTO_INCREMENT PRIMARY KEY,
+    full_name      VARCHAR(100) NOT NULL,
+    email          VARCHAR(150) NOT NULL UNIQUE,
+    password_hash  VARCHAR(255) NOT NULL,
+    role           ENUM('superadmin','officer','surveyor') NOT NULL,
+    last_login     DATETIME DEFAULT NULL,
+    is_active      TINYINT(1) DEFAULT 1,
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+	
+
+— USER table
+CREATE TABLE user (
+    user_id        INT AUTO_INCREMENT PRIMARY KEY,
+    full_name      VARCHAR(100) NOT NULL,
+    nid_number     VARCHAR(30) NOT NULL UNIQUE,
+    email          VARCHAR(150) DEFAULT NULL UNIQUE,
+    phone          VARCHAR(20) NOT NULL,
+    address        TEXT DEFAULT NULL,
+    is_verified    TINYINT(1) DEFAULT 0,
+    registered_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+	
+
+— LAND table
+CREATE TABLE land (
+    land_id                  INT AUTO_INCREMENT PRIMARY KEY,
+    parcel_number            VARCHAR(50) NOT NULL UNIQUE,
+    area_sqft                DECIMAL(12,2) NOT NULL,
+    land_type                ENUM('residential','agricultural',
+                                  'commercial','industrial','government') NOT NULL,
+    mouza                    VARCHAR(100) NOT NULL,
+    upazila                  VARCHAR(100) NOT NULL,
+    district                 VARCHAR(100) NOT NULL,
+    current_status           ENUM('active','disputed','transferred','government')
+                             DEFAULT 'active',
+    current_estimated_value  DECIMAL(15,2) DEFAULT 0.00,
+    registered_owner_id      INT NOT NULL,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (registered_owner_id) REFERENCES user(user_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+	
+
+— LAND_TRANSACTION table
+CREATE TABLE land_transaction (
+    transaction_id    INT AUTO_INCREMENT PRIMARY KEY,
+    land_id           INT NOT NULL,
+    from_user_id      INT NOT NULL,
+    to_user_id        INT NOT NULL,
+    transaction_type  ENUM('sale','inheritance','gift','court_order') NOT NULL,
+    transaction_date  DATE NOT NULL,
+    amount            DECIMAL(15,2) DEFAULT 0.00,
+    deed_number       VARCHAR(100) NOT NULL UNIQUE,
+    chain_valid       TINYINT(1) DEFAULT 1,
+    approved_by       INT DEFAULT NULL,
+    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (land_id)      REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (from_user_id) REFERENCES user(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (to_user_id)   REFERENCES user(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (approved_by)  REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— LAND_HISTORY table
+CREATE TABLE land_history (
+    history_id         INT AUTO_INCREMENT PRIMARY KEY,
+    land_id            INT NOT NULL,
+    event_type         ENUM('survey','transaction','dispute_filed',
+                            'status_change','billboard_placed','work_order') NOT NULL,
+    description        TEXT NOT NULL,
+    event_date         DATE NOT NULL,
+    recorded_by_admin  INT DEFAULT NULL,
+    FOREIGN KEY (land_id)           REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (recorded_by_admin) REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— LAND_SURVEY table
+CREATE TABLE land_survey (
+    survey_id           INT AUTO_INCREMENT PRIMARY KEY,
+    land_id             INT NOT NULL,
+    survey_date         DATE NOT NULL,
+    surveyor_admin_id   INT DEFAULT NULL,
+    land_type_at_survey VARCHAR(50) NOT NULL,
+    survey_method       ENUM('manual','digital','satellite') NOT NULL,
+    notes               TEXT DEFAULT NULL,
+    approved_by         INT DEFAULT NULL,
+    FOREIGN KEY (land_id)           REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (surveyor_admin_id) REFERENCES admin(admin_id) ON DELETE SET NULL,
+    FOREIGN KEY (approved_by)       REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— INFRASTRUCTURE table
+CREATE TABLE infrastructure (
+    asset_id          INT AUTO_INCREMENT PRIMARY KEY,
+    land_id           INT NOT NULL,
+    asset_name        VARCHAR(150) NOT NULL,
+    asset_type        ENUM('building','road','drainage','bridge','utility') NOT NULL,
+    construction_date DATE DEFAULT NULL,
+    condition_status  ENUM('excellent','good','fair','poor','critical') DEFAULT 'good',
+    owner_entity      VARCHAR(100) DEFAULT NULL,
+    FOREIGN KEY (land_id) REFERENCES land(land_id) ON DELETE RESTRICT
+);
+	
+
+— MAINTENANCE table
+CREATE TABLE maintenance (
+    maintenance_id     INT AUTO_INCREMENT PRIMARY KEY,
+    asset_id           INT NOT NULL,
+    maintenance_date   DATE NOT NULL,
+    maintenance_type   ENUM('routine','emergency','upgrade','demolition') NOT NULL,
+    cost               DECIMAL(12,2) DEFAULT 0.00,
+    assigned_admin_id  INT DEFAULT NULL,
+    notes              TEXT DEFAULT NULL,
+    next_scheduled_date DATE DEFAULT NULL,
+    FOREIGN KEY (asset_id)          REFERENCES infrastructure(asset_id) ON DELETE RESTRICT,
+    FOREIGN KEY (assigned_admin_id) REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— WORK_ORDER table
+CREATE TABLE work_order (
+    work_order_id      INT AUTO_INCREMENT PRIMARY KEY,
+    land_id            INT NOT NULL,
+    work_type          ENUM('road_construction','survey','demolition',
+                            'utility_install','inspection') NOT NULL,
+    requested_by_user  INT DEFAULT NULL,
+    assigned_admin     INT DEFAULT NULL,
+    status             ENUM('pending','in_progress','completed','cancelled')
+                       DEFAULT 'pending',
+    start_date         DATE DEFAULT NULL,
+    end_date           DATE DEFAULT NULL,
+    notes              TEXT DEFAULT NULL,
+    FOREIGN KEY (land_id)           REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (requested_by_user) REFERENCES user(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (assigned_admin)    REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— BILLBOARD table
+CREATE TABLE billboard (
+    billboard_id       INT AUTO_INCREMENT PRIMARY KEY,
+    land_id            INT NOT NULL,
+    owner_user_id      INT NOT NULL,
+    license_number     VARCHAR(80) NOT NULL UNIQUE,
+    size_sqft          DECIMAL(8,2) NOT NULL,
+    installation_date  DATE NOT NULL,
+    expiry_date        DATE NOT NULL,
+    annual_fee         DECIMAL(10,2) NOT NULL,
+    status             ENUM('active','expired','suspended','removed')
+                       DEFAULT 'active',
+    FOREIGN KEY (land_id)       REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (owner_user_id) REFERENCES user(user_id) ON DELETE RESTRICT
+);
+	
+
+— BILLBOARD_PAYMENT table
+CREATE TABLE billboard_payment (
+    payment_id         INT AUTO_INCREMENT PRIMARY KEY,
+    billboard_id       INT NOT NULL,
+    payment_date       DATE NOT NULL,
+    amount_paid        DECIMAL(10,2) NOT NULL,
+    payment_method     ENUM('cash','bank_transfer','online') NOT NULL,
+    status             ENUM('paid','pending','overdue') DEFAULT 'pending',
+    received_by_admin  INT DEFAULT NULL,
+    FOREIGN KEY (billboard_id)      REFERENCES billboard(billboard_id) ON DELETE RESTRICT,
+    FOREIGN KEY (received_by_admin) REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— TAX table
+CREATE TABLE tax (
+    tax_id          INT AUTO_INCREMENT PRIMARY KEY,
+    land_id         INT NOT NULL,
+    owner_user_id   INT NOT NULL,
+    financial_year  VARCHAR(10) NOT NULL,
+    assessed_value  DECIMAL(15,2) NOT NULL,
+    tax_rate        DECIMAL(5,4) NOT NULL,
+    tax_amount      DECIMAL(12,2) NOT NULL,
+    paid_amount     DECIMAL(12,2) DEFAULT 0.00,
+    due_date        DATE NOT NULL,
+    status          ENUM('unpaid','partial','paid','overdue') DEFAULT 'unpaid',
+    calculated_by   INT DEFAULT NULL,
+    UNIQUE KEY uq_land_year (land_id, financial_year),
+    FOREIGN KEY (land_id)       REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (owner_user_id) REFERENCES user(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (calculated_by) REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— DISPUTE table
+CREATE TABLE dispute (
+    dispute_id        INT AUTO_INCREMENT PRIMARY KEY,
+    land_id           INT NOT NULL,
+    raised_by_user    INT NOT NULL,
+    opponent_party    VARCHAR(150) DEFAULT NULL,
+    dispute_type      ENUM('ownership','boundary','mutation',
+                          'encroachment','tax') NOT NULL,
+    status            ENUM('filed','under_review','resolved',
+                          'escalated','dismissed') DEFAULT 'filed',
+    escalation_level  TINYINT DEFAULT 1,
+    filed_date        DATE NOT NULL,
+    last_updated      DATETIME DEFAULT CURRENT_TIMESTAMP
+                      ON UPDATE CURRENT_TIMESTAMP,
+    resolution_date   DATE DEFAULT NULL,
+    resolution_notes  TEXT DEFAULT NULL,
+    handled_by_admin  INT DEFAULT NULL,
+    FOREIGN KEY (land_id)          REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (raised_by_user)   REFERENCES user(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (handled_by_admin) REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— DOCUMENT_REGISTRATION table
+CREATE TABLE document_registration (
+    document_id          INT AUTO_INCREMENT PRIMARY KEY,
+    land_id              INT NOT NULL,
+    document_type        ENUM('deed','survey_certificate','tax_clearance',
+                             'court_order','mutation_order','other') NOT NULL,
+    title                VARCHAR(200) NOT NULL,
+    file_reference       VARCHAR(255) DEFAULT NULL,
+    registration_date    DATE NOT NULL,
+    expiry_date          DATE DEFAULT NULL,
+    doc_status           ENUM('valid','expiring_soon','expired','revoked')
+                         DEFAULT 'valid',
+    verified             TINYINT(1) DEFAULT 0,
+    registered_by_admin  INT DEFAULT NULL,
+    FOREIGN KEY (land_id)             REFERENCES land(land_id) ON DELETE RESTRICT,
+    FOREIGN KEY (registered_by_admin) REFERENCES admin(admin_id) ON DELETE SET NULL
+);
+	
+
+— AUDIT_LOG table
+CREATE TABLE audit_log (
+    log_id        INT AUTO_INCREMENT PRIMARY KEY,
+    table_name    VARCHAR(80) NOT NULL,
+    operation     ENUM('INSERT','UPDATE','DELETE') NOT NULL,
+    record_id     INT NOT NULL,
+    admin_id      INT DEFAULT NULL,
+    user_id       INT DEFAULT NULL,
+    old_value     TEXT DEFAULT NULL,
+    new_value     TEXT DEFAULT NULL,
+    performed_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_id) REFERENCES admin(admin_id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id)  REFERENCES user(user_id) ON DELETE SET NULL
+);
+	
+
+— Useful indexes
+CREATE INDEX idx_land_district   ON land(district);
+CREATE INDEX idx_land_status     ON land(current_status);
+CREATE INDEX idx_land_owner      ON land(registered_owner_id);
+CREATE INDEX idx_tx_date         ON land_transaction(transaction_date);
+CREATE INDEX idx_tx_land         ON land_transaction(land_id);
+CREATE INDEX idx_dispute_status  ON dispute(status, escalation_level);
+CREATE INDEX idx_tax_year        ON tax(financial_year, status);
+CREATE INDEX idx_doc_expiry      ON document_registration(expiry_date, doc_status);
+CREATE INDEX idx_billboard_exp   ON billboard(expiry_date, status);
+CREATE INDEX idx_audit_table     ON audit_log(table_name, performed_at);
+	
+
+— Trigger — auto-escalate disputes (30-day idle)
+DELIMITER $$
+
+
+CREATE EVENT evt_escalate_disputes
+ON SCHEDULE EVERY 1 DAY
+DO
+BEGIN
+    UPDATE dispute
+    SET
+        escalation_level = LEAST(escalation_level + 1, 3),
+        status = 'escalated'
+    WHERE
+        status NOT IN ('resolved','dismissed')
+        AND escalation_level < 3
+        AND DATEDIFF(NOW(), last_updated) > 30;
+END$$
+
+
+DELIMITER ;
+	
+
+— Trigger — auto-update document status
+DELIMITER $$
+
+
+CREATE EVENT evt_update_doc_status
+ON SCHEDULE EVERY 1 DAY
+DO
+BEGIN
+    UPDATE document_registration
+    SET doc_status = 'expired'
+    WHERE expiry_date < CURDATE()
+      AND doc_status NOT IN ('expired','revoked');
+
+
+    UPDATE document_registration
+    SET doc_status = 'expiring_soon'
+    WHERE expiry_date BETWEEN CURDATE()
+                          AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+      AND doc_status = 'valid';
+END$$
+
+
+DELIMITER ;
+	
+
+— Trigger — update land estimated value after transaction
+DELIMITER $$
+
+
+CREATE TRIGGER trg_update_land_value
+AFTER INSERT ON land_transaction
+FOR EACH ROW
+BEGIN
+    UPDATE land
+    SET current_estimated_value = (
+        SELECT AVG(amount)
+        FROM (
+            SELECT amount
+            FROM land_transaction
+            WHERE land_id = NEW.land_id
+              AND amount > 0
+            ORDER BY transaction_date DESC
+            LIMIT 3
+        ) AS recent
+    )
+    WHERE land_id = NEW.land_id;
+END$$
+
+
+DELIMITER ;
+	
+
+— View — overdue taxes
+CREATE VIEW vw_overdue_taxes AS
+SELECT
+    t.tax_id,
+    l.parcel_number,
+    l.district,
+    u.full_name  AS owner_name,
+    u.phone,
+    t.financial_year,
+    t.tax_amount,
+    t.paid_amount,
+    (t.tax_amount - t.paid_amount) AS balance_due,
+    t.due_date
+FROM tax t
+JOIN land l ON t.land_id = l.land_id
+JOIN user u ON t.owner_user_id = u.user_id
+WHERE t.status IN ('unpaid','overdue','partial')
+  AND t.due_date < CURDATE()
+ORDER BY balance_due DESC;
+	
+
+— View — active dispute summary
+CREATE VIEW vw_active_disputes AS
+SELECT
+    d.dispute_id,
+    l.parcel_number,
+    u.full_name        AS raised_by,
+    d.dispute_type,
+    d.status,
+    d.escalation_level,
+    d.filed_date,
+    DATEDIFF(NOW(), d.last_updated) AS days_since_update,
+    a.full_name        AS assigned_officer
+FROM dispute d
+JOIN land l  ON d.land_id = l.land_id
+JOIN user u  ON d.raised_by_user = u.user_id
+LEFT JOIN admin a ON d.handled_by_admin = a.admin_id
+WHERE d.status NOT IN ('resolved','dismissed')
+ORDER BY d.escalation_level DESC, d.filed_date ASC;
+	
+
+Confidential — Internal Use OnlyPage

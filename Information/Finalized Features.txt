@@ -1,0 +1,12 @@
+﻿Login (Admin/User) – secure authentication and role-based access.
+Land Lookup – view parcel details and current status.
+Land Transaction & Ownership History – record transfers and maintain chain integrity.
+Land Survey – track survey dates, type, and responsible surveyor.
+Infrastructure Management – register and classify assets (buildings, roads, utilities).
+Work Orders – government-planned land-related projects (construction, demolition, inspection).
+Billboard Management & Revenue Tracking – manage billboard licenses and payments.
+Tax Calculation with Auto-Estimation – compute taxes using historical transaction values.
+Dispute Handling with Auto-Escalation – file disputes, escalate unresolved cases automatically.
+Document Registration with Expiry Tracking – manage deeds, certificates, and flag expiring documents.
+Infrastructure Maintenance – schedule and record maintenance activities.
+Audit Log – centralized logging of all critical changes for legal defensibility.
