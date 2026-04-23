@@ -8,7 +8,7 @@ try{
     $pdo =  new PDO($dsn,$dbusername,$dbpass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
     }
-catch(PDOEception $e){
+catch(PDOException $e){
 echo "Connection failed: " . $e->getMessage();
 }
 
