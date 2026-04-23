@@ -40,5 +40,38 @@
  </body>
  </html>
  
+ <?php
+    require_once "db_connect.php";
+    if($_SERVER["REQUEST_METHOD"]=="POST"){
+        $role = $_POST['login_role'];
+        $nid = $_POST['nid_number'];
+        $pass = $_POST['password'];
+    }
+    if ($role === "admin") {
+        $table = "admin";
+    } else {
+        $table = "user";
+    }
+    try{
+        $sql = "SELECT * FROM $table WHERE nid_number=:nid";
+        $query = $pdo->prepare($sql);
+        $query->execute([
+            ':nid' => $nid,
+        ]);
+        $user = $query->fetch(PDO::FETCH_ASSOC);
+        if ($user) {
+            if ($pass === $user['password_hash']) {
+                echo"✅ Login successful! Welcome, " . htmlspecialchars($user['full_name']);
+            }
+            else{echo "❌ Invalid password.";}
+        } else {
+            echo "❌ No $role found with that NID.";
+        }
+    } 
+    catch (PDOException $e) {
+        echo "Query failed: " . $e->getMessage();
+    }
+
+ ?>
  
 <?php include 'footer.php'; ?>
