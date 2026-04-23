@@ -62,7 +62,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password  = $_POST['password'];
 
     try {
-        // Insert new user
+        
         $sql = "INSERT INTO user (full_name, nid_number, email, phone, address, is_verified, registered_at, password_hash)
                 VALUES (:full_name, :nid, :email, :phone, :address, 0, NOW(), :password)";
         
@@ -73,7 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             ':email'     => $email,
             ':phone'     => $phone,
             ':address'   => $address,
-            ':password'  => $password   // plain text for now
+            ':password'  => $password   
         ]);
 
         echo "✅ Registration successful! You can now log in.";
