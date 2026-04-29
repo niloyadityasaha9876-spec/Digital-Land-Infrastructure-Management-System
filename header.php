@@ -21,7 +21,7 @@ if (session_status() === PHP_SESSION_NONE) {
             <?php if (isset($_SESSION['admin_id'])): ?>
                 <a href="admin_dashboard.php">Dashboard</a>
                 <a href="land_lookup.php">Land Lookup</a>
-                <a href="transactions.php">Transactions</a>
+                <a href="land_transaction_history.php">Transactions</a>
                 <a href="logout.php">Logout</a>
             <?php else: ?>
                 <a href="user_dashboard.php">Dashboard</a>

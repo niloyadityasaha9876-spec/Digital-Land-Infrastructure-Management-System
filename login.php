@@ -38,13 +38,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $error = "Invalid admin credentials or account inactive.";
             }
-        } else {
+        } 
+        else {
             $stmt = $pdo->prepare("SELECT * FROM user WHERE nid_number = ?");
             $stmt->execute([$nid]);
             $user = $stmt->fetch();
 
             
-            if ($user && $password === $user['phone']) { 
+            if ($user && $password === $user['password_hash']) { 
                 $_SESSION['user_id'] = $user['user_id'];
                 $_SESSION['user_name'] = $user['full_name'];
                 header("Location: user_dashboard.php");
