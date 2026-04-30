@@ -50,7 +50,7 @@ include 'header.php';
             <a href="land_lookup.php" class="card" style="display: block; text-align: center;">
                 <h4>Land Database</h4>
             </a>
-            <a href="transactions.php" class="card" style="display: block; text-align: center;">
+            <a href="land_transaction_history.php" class="card" style="display: block; text-align: center;">
                 <h4>Transactions</h4>
             </a>
             <a href="surveys.php" class="card" style="display: block; text-align: center;">
